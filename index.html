@@ -29,6 +29,11 @@ background:radial-gradient(circle at 25% 15%,rgba(90,140,255,.42),transparent 55
 #redeemCode{font-size:28px;font-weight:bold;letter-spacing:6px;color:#ffe66d;background:rgba(0,0,0,.4);padding:14px 10px;border-radius:10px;margin:18px 0;font-family:monospace;user-select:text;-webkit-user-select:text}
 #redeemBox .row{display:flex;gap:10px;justify-content:center}
 #redeemBox button{border:0;padding:12px 22px;border-radius:10px;font-size:15px;font-weight:bold;background:#fff;color:#1a0a3a;cursor:pointer}
+#warnModal{position:fixed;inset:0;background:rgba(0,0,0,.82);display:none;align-items:center;justify-content:center;z-index:300;padding:20px}
+#warnBox{background:#3a0a0a;border:2px solid #ff5555;padding:26px 22px;border-radius:16px;text-align:center;color:#fff;width:100%;max-width:320px}
+#warnBox h2{font-size:22px;color:#ff8888;margin-bottom:14px}
+#warnBox p{font-size:16px;margin-bottom:22px;line-height:1.5}
+#warnBox button{background:#ff5555;color:#fff;border:0;padding:12px 40px;border-radius:10px;font-size:17px;font-weight:bold;cursor:pointer}
 </style>
 </head>
 <body>
@@ -61,27 +66,32 @@ background:radial-gradient(circle at 25% 15%,rgba(90,140,255,.42),transparent 55
   </div>
 </div>
 
+<div id="warnModal">
+  <div id="warnBox">
+    <h2>تحذير</h2>
+    <p>سيتم إخراجك من هذه الغرفة</p>
+    <button id="warnOk">OK</button>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.0/peerjs.min.js"></script>
 <script>
+const REDIRECT_URL='https://hesoyam14moh-dot.github.io/parkour-2/';
 const $=i=>document.getElementById(i);
 const POOL=[['6767676',10],['HAHAHAH',5],['PPPPPPP',5],['MOH6767',5],['HESOYAM',5],['VONJFTG',.5],['BHYGFD',.5],['OKATVCD',.5],['IMJYCXZ',.5],['MOKHSNB',.5],['OJKLUGZ',.5],['ZUPMKH',.5],['WANRNEW',.5],['GDHHJKG',.5],['HHHHHHH',.5],['HIFOVWV',.5],['YFOWQMJ',.5],['GDHTXHA',.5],['AWQMOPA',.5],['HMFYBDK',.5],['VODMHAA',.5],['YFHOLHJ',.5],['TDOEMFH',.5]];
-const E={menu:$('menu'),create:$('createBtn'),join:$('joinBtn'),ok:$('joinOk'),input:$('roomInput'),code:$('roomCode'),status:$('status'),joy:$('joy'),stick:$('stick'),jump:$('jump'),info:$('roomInfo'),toast:$('toast'),hud:$('coinHud'),count:$('coinCount'),icon:$('coinIcon'),redeem:$('redeemBtn'),view:$('viewCodeBtn'),modal:$('redeemModal'),rCode:$('redeemCode'),rTitle:$('redeemTitle'),copy:$('copyBtn'),okBtn:$('okBtn')};
+const E={menu:$('menu'),create:$('createBtn'),join:$('joinBtn'),ok:$('joinOk'),input:$('roomInput'),code:$('roomCode'),status:$('status'),joy:$('joy'),stick:$('stick'),jump:$('jump'),info:$('roomInfo'),toast:$('toast'),hud:$('coinHud'),count:$('coinCount'),icon:$('coinIcon'),redeem:$('redeemBtn'),view:$('viewCodeBtn'),modal:$('redeemModal'),rCode:$('redeemCode'),rTitle:$('redeemTitle'),copy:$('copyBtn'),okBtn:$('okBtn'),warn:$('warnModal'),warnOk:$('warnOk')};
 E.icon.innerHTML='<img src="https://i.postimg.cc/VvJQLGFK/IMG-20261008-153917-222.jpg">';
 
-/* ===== حالة بسيطة (بالذاكرة فقط، تُصفّر عند إعادة التحميل) ===== */
-let savedCode='';        // الكود الحالي
-let savedValue=0;        // قيمته بالعملات
-let redeemed=false;      // هل استُرد؟
-let coinCount=0;         // عرض العملات
+let savedCode='',savedValue=0,redeemed=false,coinCount=0,circleTouched=false;
 const showCoins=()=>E.count.textContent=coinCount%1?coinCount.toFixed(1):coinCount;
 
-/* ===== باقي الحالة ===== */
 let peer,conn,role,roomCode,started=0,SEED;
 let scene,camera,renderer;
 const clock=new THREE.Clock();
 const boxes=[],cps=[];
-let localMesh,remoteMesh,finishBox,finishShown,curCP=-1;
+let localMesh,remoteMesh,finishBox,finishShown,curCP=-1,circleMesh=null;
+const circlePos=new THREE.Vector3();
 const pos=new THREE.Vector3(),rPos=new THREE.Vector3(),startP=new THREE.Vector3(),safeP=new THREE.Vector3();
 let yaw=0,pitch=0,rYaw=0,vy=0,onG=1;
 const GRAV=22,JUMP=10,SPD=7.5,RAD=.5;
@@ -91,7 +101,7 @@ const keys={};
 const rnd=a=>()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296};
 const code4=()=>Array.from({length:4},()=>'ABCDEFGHJKLMNPQRSTUVWXYZ'[~~(Math.random()*24)]).join('');
 
-/* ===== القائمة ===== */
+/* قائمة */
 E.create.onclick=()=>{
   role='host';roomCode=code4();SEED=~~(Math.random()*1e5)+1;
   E.status.textContent='جاري الإنشاء...';
@@ -115,13 +125,11 @@ const onData=d=>{
   if(started&&d.t==='s'){rPos.set(d.p[0],d.p[1],d.p[2]);rYaw=d.r}
 };
 
-/* ===== بدء اللعبة ===== */
 const start=()=>{
   if(started)return;started=1;
   startP.set(role==='host'?-2:2,3,28);pos.copy(startP);safeP.copy(startP);
   rPos.set(role==='host'?2:-2,3,28);
-  yaw=pitch=vy=0;onG=1;curCP=-1;finishShown=0;
-  /* تصفير كل شيء عند كل دخول */
+  yaw=pitch=vy=0;onG=1;curCP=-1;finishShown=0;circleTouched=0;
   savedCode='';savedValue=0;redeemed=false;coinCount=0;showCoins();
   E.menu.style.display='none';E.joy.style.display='block';E.jump.style.display='flex';
   E.info.style.display='block';E.info.textContent='الغرفة: '+roomCode;E.hud.style.display='flex';
@@ -129,7 +137,6 @@ const start=()=>{
   setInterval(()=>{if(conn&&conn.open)conn.send({t:'s',p:[pos.x,pos.y,pos.z],r:yaw})},50);
 };
 
-/* ===== المشهد ===== */
 const initScene=()=>{
   scene=new THREE.Scene();
   scene.background=new THREE.Color(0x87ceeb);
@@ -178,9 +185,19 @@ const buildMap=()=>{
     if(end)finishBox=boxes[boxes.length-1];
     if(cp){addCP(x,z,top,cols[n++%5]);cps.push({x,z,top,id:cps.length})}
   }
+  /* الدائرة بعد النهاية */
+  if(finishBox){
+    circlePos.set(finishBox.x, finishBox.top, finishBox.z-7);
+    const ring=new THREE.Mesh(new THREE.RingGeometry(1.6,2,32),new THREE.MeshBasicMaterial({color:0xff00ff,side:THREE.DoubleSide}));
+    ring.position.set(circlePos.x,circlePos.y+.05,circlePos.z);
+    ring.rotation.x=-Math.PI/2;scene.add(ring);
+    const disc=new THREE.Mesh(new THREE.CircleGeometry(1.6,32),new THREE.MeshBasicMaterial({color:0xcc00cc,side:THREE.DoubleSide}));
+    disc.position.set(circlePos.x,circlePos.y+.04,circlePos.z);
+    disc.rotation.x=-Math.PI/2;scene.add(disc);
+    circleMesh=ring;
+  }
 };
 
-/* ===== التحكم ===== */
 const initControls=()=>{
   E.joy.addEventListener('touchstart',e=>{e.preventDefault();const t=e.changedTouches[0];jId=t.identifier;const r=E.joy.getBoundingClientRect();jcx=r.left+r.width/2;jcy=r.top+r.height/2},{passive:false});
   E.joy.addEventListener('touchmove',e=>{
@@ -197,7 +214,7 @@ const initControls=()=>{
 
   document.body.addEventListener('touchstart',e=>{
     for(const t of e.changedTouches){
-      if(t.target.closest?.('#joy,#jump,#roomInfo,#coinHud,#redeemModal'))continue;
+      if(t.target.closest?.('#joy,#jump,#roomInfo,#coinHud,#redeemModal,#warnModal'))continue;
       if(t.clientX>innerWidth/2&&lId==null){lId=t.identifier;llx=t.clientX;lly=t.clientY}
     }
   },{passive:false});
@@ -223,10 +240,10 @@ const initControls=()=>{
   E.copy.onclick=e=>{e.stopPropagation();doCopy()};
   E.okBtn.onclick=e=>{e.stopPropagation();E.okBtn._fn?.()};
   E.modal.onclick=e=>{if(e.target===E.modal)closeModal()};
+  E.warnOk.onclick=()=>{window.location.href=REDIRECT_URL};
 };
 const doJump=()=>{if(started&&onG){vy=JUMP;onG=0}};
 
-/* ===== الفيزياء ===== */
 const update=dt=>{
   let kx=0,kz=0;
   if(keys.KeyW||keys.ArrowUp)kz++;if(keys.KeyS||keys.ArrowDown)kz--;
@@ -274,10 +291,15 @@ const update=dt=>{
       setTimeout(()=>showModal('كود الاسترداد',savedCode,closeModal),700);
     } else toast_('لقد فزت! 🎉');
   }
+
+  /* لمس الدائرة */
+  if(circleMesh&&!circleTouched){
+    const dx=pos.x-circlePos.x,dz=pos.z-circlePos.z;
+    if(dx*dx+dz*dz<4){circleTouched=1;E.warn.style.display='flex'}
+  }
 };
 const toast_=m=>{E.toast.textContent=m;E.toast.style.display='block';clearTimeout(E.toast._t);E.toast._t=setTimeout(()=>E.toast.style.display='none',1300)};
 
-/* ===== الكود ===== */
 const showModal=(t,c,fn)=>{E.rTitle.textContent=t;E.rCode.textContent=c;E.modal.style.display='flex';E.okBtn._fn=fn||closeModal;E.copy.focus()};
 const openRedeem=()=>{
   if(!savedCode){toast_('لم تفز بعد');return}
@@ -299,7 +321,6 @@ const fb=t=>{
 const ok_=()=>{E.copy.textContent='تم ✔';setTimeout(()=>E.copy.textContent='نسخ',1200)};
 const closeModal=()=>E.modal.style.display='none';
 
-/* ===== الحلقة ===== */
 const loop=()=>{
   requestAnimationFrame(loop);
   if(!started)return;
